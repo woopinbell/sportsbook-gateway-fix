@@ -5,6 +5,7 @@
 ## 현재 구현 범위
 
 - Spring Cloud Gateway Server MVC 기반 프로젝트 구성
+- RS256 JWT 검증과 외부 신뢰 헤더 제거
 
 ## 빌드
 

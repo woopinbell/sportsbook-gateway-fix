@@ -2,6 +2,16 @@ spring:
   application:
     name: gateway
 
+  # ADR-0011: self-contained RS256 JWTs verified at the edge. The gateway only
+  # holds the public verification key; the matching private key belongs to the
+  # auth issuer and is never deployed here. Override the location in production
+  # (e.g. a mounted secret) via GATEWAY_JWT_PUBLIC_KEY.
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          public-key-location: ${GATEWAY_JWT_PUBLIC_KEY:classpath:jwt/dev-public.pem}
+
 server:
   # Public front door. Downstream services sit behind it: wallet 8081,
   # betting 8082, odds-feed 8085 (see each service's application.yml).
