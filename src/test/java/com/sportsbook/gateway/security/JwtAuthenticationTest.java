@@ -34,7 +34,9 @@ import org.springframework.test.web.servlet.MockMvc;
  * per run (no committed private key); the decoder is pinned to the matching public key so signing
  * here mirrors a real issuer.
  */
-@SpringBootTest
+// Rate limiting is exercised in its own test; disable it here so these auth assertions don't
+// depend on Redis (the limiter would otherwise fail open after a connect timeout).
+@SpringBootTest(properties = "gateway.ratelimit.enabled=false")
 @AutoConfigureMockMvc
 class JwtAuthenticationTest {
 

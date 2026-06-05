@@ -12,6 +12,13 @@ spring:
         jwt:
           public-key-location: ${GATEWAY_JWT_PUBLIC_KEY:classpath:jwt/dev-public.pem}
 
+  # Backing store for the distributed rate-limit buckets (Bucket4j). Lettuce
+  # connects lazily; if Redis is down the limiter fails open (RateLimiterService).
+  data:
+    redis:
+      host: ${GATEWAY_REDIS_HOST:localhost}
+      port: ${GATEWAY_REDIS_PORT:6379}
+
 server:
   # Public front door. Downstream services sit behind it: wallet 8081,
   # betting 8082, odds-feed 8085 (see each service's application.yml).
@@ -37,3 +44,16 @@ logging:
   level:
     root: INFO
     com.sportsbook.gateway: INFO
+
+# Rate limiting uses per-user buckets for
+# authenticated traffic, per-IP buckets for anonymous, shared across instances
+# via Redis. Tune capacity / refill per dimension.
+gateway:
+  ratelimit:
+    enabled: ${GATEWAY_RATELIMIT_ENABLED:true}
+    user:
+      capacity: 120
+      refill-period: 1m
+    ip:
+      capacity: 60
+      refill-period: 1m
