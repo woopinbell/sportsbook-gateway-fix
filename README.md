@@ -7,6 +7,7 @@
 - Spring Cloud Gateway Server MVC 기반 프로젝트 구성
 - RS256 JWT 검증과 외부 신뢰 헤더 제거
 - Redis를 공유하는 사용자별·IP별 토큰 버킷
+- 내부 서비스 경로 변환, 사용자 정보와 traceparent 전달
 
 ## 빌드
 

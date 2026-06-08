@@ -41,7 +41,12 @@ public class SecurityConfig {
                 auth.requestMatchers(
                         "/actuator/health/**", "/actuator/info", "/actuator/prometheus")
                     .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/events/**", "/api/v1/odds/**")
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/api/v1/events",
+                        "/api/v1/events/**",
+                        "/api/v1/odds",
+                        "/api/v1/odds/**")
                     .permitAll()
                     .requestMatchers("/ws/**")
                     .permitAll()

@@ -1,5 +1,8 @@
 package com.sportsbook.gateway.ratelimit;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -7,6 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -24,8 +30,8 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * End-to-end rate limiting against a real Redis (Testcontainers): the per-IP bucket (capacity 3)
- * lets three anonymous requests through, then returns 429 with an RFC 7807 body, a Retry-After
- * header, and a zeroed remaining-tokens header.
+ * lets three anonymous requests through (each proxied to a stubbed odds-feed), then returns 429
+ * with an RFC 7807 body, a Retry-After header, and a zeroed remaining-tokens header.
  */
 @SpringBootTest(
     properties = {"gateway.ratelimit.ip.capacity=3", "gateway.ratelimit.ip.refill-period=1m"})
@@ -39,12 +45,31 @@ class RateLimitTest {
   static final GenericContainer<?> REDIS =
       new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
 
+  // The public read route now proxies; stub odds-feed so allowed requests get a real 200.
+  private static WireMockServer oddsFeed;
+
   @Autowired private MockMvc mvc;
 
+  @BeforeAll
+  static void startOddsFeed() {
+    oddsFeed =
+        new WireMockServer(options().dynamicPort().http2PlainDisabled(true).http2TlsDisabled(true));
+    oddsFeed.start();
+    oddsFeed.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(urlPathEqualTo("/api/v1/events"))
+            .willReturn(okJson("{\"items\":[]}")));
+  }
+
+  @AfterAll
+  static void stopOddsFeed() {
+    oddsFeed.stop();
+  }
+
   @DynamicPropertySource
-  static void redisProperties(DynamicPropertyRegistry registry) {
+  static void properties(DynamicPropertyRegistry registry) {
     registry.add("spring.data.redis.host", REDIS::getHost);
     registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+    registry.add("gateway.downstream.odds-feed-uri", () -> "http://localhost:" + oddsFeed.port());
   }
 
   @Test
@@ -55,8 +80,8 @@ class RateLimitTest {
           return request;
         };
 
-    // Public read API is anonymous, so it is charged to the per-IP bucket. The first `capacity`
-    // requests pass the limiter (no route is wired yet, so they 404) — the point is "not 429".
+    // Public read API is anonymous, so it is charged to the per-IP bucket; the first `capacity`
+    // requests pass the limiter and are proxied (200).
     for (int i = 0; i < IP_CAPACITY; i++) {
       mvc.perform(get("/api/v1/events").with(fromIp)).andExpect(status().is(not(429)));
     }

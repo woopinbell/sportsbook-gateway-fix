@@ -57,3 +57,10 @@ gateway:
     ip:
       capacity: 60
       refill-period: 1m
+  # Downstream service base URIs (defaults match each service's local port). The
+  # gateway rewrites the public /api/v1/* path to the internal /internal/v1/*
+  # contract before proxying (odds-feed read API is already /api/v1).
+  downstream:
+    betting-uri: ${GATEWAY_BETTING_URI:http://localhost:8082}
+    wallet-uri: ${GATEWAY_WALLET_URI:http://localhost:8081}
+    odds-feed-uri: ${GATEWAY_ODDS_FEED_URI:http://localhost:8085}

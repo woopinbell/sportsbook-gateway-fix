@@ -83,10 +83,9 @@ class JwtAuthenticationTest {
         .andExpect(status().isUnauthorized());
   }
 
-  @Test
-  void publicReadApi_eventsWithoutToken_isNotRejected() throws Exception {
-    mvc.perform(get("/api/v1/events")).andExpect(status().is(not(401)));
-  }
+  // The public read API (/api/v1/events|odds) is now a real route; that it is reachable without a
+  // token is asserted end-to-end in GatewayRoutingTest. Here we keep the auth slice independent of
+  // downstreams and only assert the permitAll decision on a non-proxied probe.
 
   @Test
   void actuatorLivenessProbe_isPublic() throws Exception {
