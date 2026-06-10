@@ -19,6 +19,16 @@ spring:
       host: ${GATEWAY_REDIS_HOST:localhost}
       port: ${GATEWAY_REDIS_PORT:6379}
 
+  # The gateway is a pure consumer (ADR-0006/0014): it decodes Avro off Kafka and
+  # fans the events out over STOMP. auto-offset-reset=latest because only live
+  # updates matter for a push gateway — history is not replayed to clients.
+  kafka:
+    bootstrap-servers: ${GATEWAY_KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+
 server:
   # Public front door. Downstream services sit behind it: wallet 8081,
   # betting 8082, odds-feed 8085 (see each service's application.yml).
@@ -64,3 +74,13 @@ gateway:
     betting-uri: ${GATEWAY_BETTING_URI:http://localhost:8082}
     wallet-uri: ${GATEWAY_WALLET_URI:http://localhost:8081}
     odds-feed-uri: ${GATEWAY_ODDS_FEED_URI:http://localhost:8085}
+  # Kafka topics consumed for the STOMP fan-out (names owned cross-repo:
+  # odds-feed publishes odds.changed; settlement publishes bet.settled/voided).
+  topics:
+    odds-changed: ${GATEWAY_TOPIC_ODDS_CHANGED:odds.changed}
+    bet-settled: ${GATEWAY_TOPIC_BET_SETTLED:bet.settled}
+    bet-voided: ${GATEWAY_TOPIC_BET_VOIDED:bet.voided}
+  # STOMP WebSocket. Allowed origins should be locked down per environment;
+  # "*" is a dev default (the public clients are browsers on other origins).
+  ws:
+    allowed-origins: ${GATEWAY_WS_ALLOWED_ORIGINS:*}
