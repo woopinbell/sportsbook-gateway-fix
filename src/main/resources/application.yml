@@ -75,11 +75,13 @@ gateway:
     wallet-uri: ${GATEWAY_WALLET_URI:http://localhost:8081}
     odds-feed-uri: ${GATEWAY_ODDS_FEED_URI:http://localhost:8085}
   # Kafka topics consumed for the STOMP fan-out (names owned cross-repo:
-  # odds-feed publishes odds.changed; settlement publishes bet.settled/voided).
+  # odds-feed publishes odds.changed; settlement publishes bet.settled.v1/voided.v1,
+  # versioned to match the bet.* domain-event family — bet.placed.v1, bet.settled.v1,
+  # bet.voided.v1 — that betting owns and consumes).
   topics:
     odds-changed: ${GATEWAY_TOPIC_ODDS_CHANGED:odds.changed}
-    bet-settled: ${GATEWAY_TOPIC_BET_SETTLED:bet.settled}
-    bet-voided: ${GATEWAY_TOPIC_BET_VOIDED:bet.voided}
+    bet-settled: ${GATEWAY_TOPIC_BET_SETTLED:bet.settled.v1}
+    bet-voided: ${GATEWAY_TOPIC_BET_VOIDED:bet.voided.v1}
   # STOMP WebSocket. Allowed origins should be locked down per environment;
   # "*" is a dev default (the public clients are browsers on other origins).
   ws:

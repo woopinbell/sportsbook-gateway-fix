@@ -7,7 +7,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Bridges Kafka {@code bet.settled} / {@code bet.voided} to STOMP: decodes the Avro event and
+ * Bridges Kafka {@code bet.settled.v1} / {@code bet.voided.v1} to STOMP: decodes the Avro event and
  * pushes a {@link BetStatusUpdate} to the owning user's {@code /user/queue/bets}. Spring resolves
  * the destination to the session(s) whose principal name equals the event's {@code userId}, so a
  * user only ever receives their own bet updates (the principal is named by the JWT subject in

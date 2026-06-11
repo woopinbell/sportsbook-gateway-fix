@@ -72,7 +72,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
     })
 @EmbeddedKafka(
     partitions = 1,
-    topics = {"odds.changed", "bet.settled", "bet.voided"},
+    topics = {"odds.changed", "bet.settled.v1", "bet.voided.v1"},
     bootstrapServersProperty = "spring.kafka.bootstrap-servers")
 class WebSocketStreamTest {
 
@@ -145,7 +145,7 @@ class WebSocketStreamTest {
             .setPayout(money)
             .setSettledAt(Instant.now())
             .build();
-    publish("bet.settled", event.getEventId(), event);
+    publish("bet.settled.v1", event.getEventId(), event);
 
     String message = received.poll(RECEIVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     assertThat(message).isNotNull();
