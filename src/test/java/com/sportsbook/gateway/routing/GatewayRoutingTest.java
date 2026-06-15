@@ -15,11 +15,13 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPublicKey;
@@ -58,6 +60,9 @@ import org.springframework.test.context.DynamicPropertySource;
 class GatewayRoutingTest {
 
   private static final KeyPair ISSUER = rsa();
+  private static final String ACTOR_ID = "11111111-1111-4111-8111-111111111111";
+  private static final String OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
+  private static final String BET_ID = "33333333-3333-4333-8333-333333333333";
   private static WireMockServer downstream;
 
   @Autowired private TestRestTemplate rest;
@@ -97,42 +102,74 @@ class GatewayRoutingTest {
   }
 
   @Test
-  void placeBet_isRewrittenToInternalPath_andTrustedIdentityForwarded() {
+  void placeBet_forwardsVerifiedUuidActor_andPreservesBody() {
     downstream.stubFor(
         post(urlEqualTo("/internal/v1/bets")).willReturn(okJson("{}").withStatus(201)));
 
-    HttpHeaders headers = bearer("user-7");
+    String body = "{\n  \"userId\": \"" + OTHER_USER_ID + "\",\n  \"stake\": 1000\n}";
+    HttpHeaders headers = bearer(ACTOR_ID);
     headers.setContentType(MediaType.APPLICATION_JSON);
-    headers.set("X-User-Id", "spoofed-attacker"); // must be stripped + overwritten
+    headers.set("X-User-Id", OTHER_USER_ID);
+    headers.set("X-User-Roles", "ADMIN");
 
     ResponseEntity<String> response =
         rest.exchange(
-            "/api/v1/bets", HttpMethod.POST, new HttpEntity<>("{}", headers), String.class);
+            "/api/v1/bets", HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
 
     assertThat(response.getStatusCode().value()).isEqualTo(201);
-    downstream.verify(
-        postRequestedFor(urlEqualTo("/internal/v1/bets"))
-            .withHeader("X-User-Id", equalTo("user-7"))
-            .withHeader("X-User-Roles", equalTo("USER")));
+    List<LoggedRequest> requests =
+        downstream.findAll(postRequestedFor(urlEqualTo("/internal/v1/bets")));
+    assertThat(requests).hasSize(1);
+    LoggedRequest forwarded = requests.get(0);
+    assertThat(forwarded.getHeaders().getHeader("X-User-Id").values()).containsExactly(ACTOR_ID);
+    assertThat(forwarded.getHeaders().getHeader("X-User-Roles").values()).containsExactly("USER");
+    assertThat(new String(forwarded.getBody(), StandardCharsets.UTF_8)).isEqualTo(body);
   }
 
   @Test
-  void listBets_injectsSubjectAsUserIdQueryParam() {
+  void listBets_forwardsVerifiedUuidActor_andOverridesSpoofedUserId() {
     downstream.stubFor(
         get(urlPathEqualTo("/internal/v1/bets")).willReturn(okJson("{\"items\":[]}")));
 
+    HttpHeaders headers = bearer(ACTOR_ID);
+    headers.set("X-User-Id", OTHER_USER_ID);
+
     ResponseEntity<String> response =
         rest.exchange(
-            "/api/v1/bets?cursor=abc",
+            "/api/v1/bets?userId=" + OTHER_USER_ID + "&cursor=abc",
             HttpMethod.GET,
-            new HttpEntity<>(bearer("user-3")),
+            new HttpEntity<>(headers),
             String.class);
 
     assertThat(response.getStatusCode().value()).isEqualTo(200);
-    downstream.verify(
-        getRequestedFor(urlPathEqualTo("/internal/v1/bets"))
-            .withQueryParam("userId", equalTo("user-3"))
-            .withQueryParam("cursor", equalTo("abc")));
+    List<LoggedRequest> requests =
+        downstream.findAll(getRequestedFor(urlPathEqualTo("/internal/v1/bets")));
+    assertThat(requests).hasSize(1);
+    LoggedRequest forwarded = requests.get(0);
+    assertThat(forwarded.getHeaders().getHeader("X-User-Id").values()).containsExactly(ACTOR_ID);
+    assertThat(forwarded.queryParameter("userId").values()).containsExactly(ACTOR_ID);
+    assertThat(forwarded.queryParameter("cursor").values()).containsExactly("abc");
+  }
+
+  @Test
+  void getBet_forwardsVerifiedUuidActor() {
+    String downstreamPath = "/internal/v1/bets/" + BET_ID;
+    downstream.stubFor(
+        get(urlEqualTo(downstreamPath)).willReturn(okJson("{\"id\":\"" + BET_ID + "\"}")));
+
+    HttpHeaders headers = bearer(ACTOR_ID);
+    headers.set("X-User-Id", OTHER_USER_ID);
+
+    ResponseEntity<String> response =
+        rest.exchange(
+            "/api/v1/bets/" + BET_ID, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    List<LoggedRequest> requests = downstream.findAll(getRequestedFor(urlEqualTo(downstreamPath)));
+    assertThat(requests).hasSize(1);
+    LoggedRequest forwarded = requests.get(0);
+    assertThat(forwarded.getHeaders().getHeader("X-User-Id").values()).containsExactly(ACTOR_ID);
+    assertThat(forwarded.getHeaders().getHeader("X-User-Roles").values()).containsExactly("USER");
   }
 
   @Test

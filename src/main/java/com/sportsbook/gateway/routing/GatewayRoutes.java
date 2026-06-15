@@ -79,8 +79,8 @@ public class GatewayRoutes {
   /**
    * Rewrites {@code /api/v1/bets...} to {@code /internal/v1/bets...}. For the collection GET it
    * also injects {@code userId=<subject>} (overriding any client value) so a user can only list
-   * their own bets. The POST body still carries its own {@code userId}; reconciling that to trust
-   * X-User-Id is a downstream follow-up (the gateway does not rewrite request bodies in V1).
+   * their own bets. The gateway preserves the POST body byte-for-byte; betting requires the
+   * forwarded X-User-Id and rejects a body actor mismatch.
    */
   private ServerRequest forwardBets(ServerRequest request) {
     String rewrittenPath =
