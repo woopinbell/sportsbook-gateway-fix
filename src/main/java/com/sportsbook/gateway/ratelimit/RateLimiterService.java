@@ -19,9 +19,11 @@ import org.springframework.stereotype.Service;
 /**
  * Distributed token-bucket rate limiter (Bucket4j over Redis/Lettuce). Buckets live in Redis so the
  * limit holds across gateway instances. The Redis connection and proxy manager are created lazily
- * on first use, and every Redis interaction is wrapped so that a Redis outage <b>fails open</b>
- * (the request is allowed) rather than taking the gateway down — availability of the front door
- * matters more than perfect limiting during a cache blip.
+ * on first use. Every Redis interaction is wrapped so that an unavailable or unresponsive Redis
+ * <b>fails open</b> (the request is allowed) rather than taking the gateway down. The client
+ * configuration bounds command execution and rejects commands during reconnect, ensuring this catch
+ * path is reached promptly; availability of the front door matters more than perfect limiting
+ * during a cache blip.
  */
 @Service
 public class RateLimiterService {

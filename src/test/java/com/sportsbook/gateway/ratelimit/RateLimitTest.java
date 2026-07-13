@@ -3,7 +3,10 @@ package com.sportsbook.gateway.ratelimit;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -11,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import java.time.Duration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -49,6 +53,8 @@ class RateLimitTest {
   private static WireMockServer oddsFeed;
 
   @Autowired private MockMvc mvc;
+
+  @Autowired private RateLimiterService rateLimiterService;
 
   @BeforeAll
   static void startOddsFeed() {
@@ -93,5 +99,37 @@ class RateLimitTest {
         .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
         .andExpect(jsonPath("$.errorCode").value("GATEWAY_RATE_LIMITED"))
         .andExpect(jsonPath("$.status").value(429));
+  }
+
+  @Test
+  void warmedLimiter_failsOpenWithinTwoSecondsWhenRedisPauses_thenRecovers() {
+    String key = "resilience:warmed-connection";
+    RateLimitProperties.Limit limit = new RateLimitProperties.Limit(100, Duration.ofMinutes(1));
+
+    RateLimitResult warm = rateLimiterService.tryConsume(key, limit);
+    assertThat(warm.allowed()).isTrue();
+    assertThat(warm.failOpen()).isFalse();
+
+    REDIS.getDockerClient().pauseContainerCmd(REDIS.getContainerId()).exec();
+    try {
+      RateLimitResult degraded =
+          assertTimeoutPreemptively(
+              Duration.ofSeconds(2), () -> rateLimiterService.tryConsume(key, limit));
+
+      assertThat(degraded.allowed()).isTrue();
+      assertThat(degraded.failOpen()).isTrue();
+    } finally {
+      REDIS.getDockerClient().unpauseContainerCmd(REDIS.getContainerId()).exec();
+    }
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(100))
+        .untilAsserted(
+            () -> {
+              RateLimitResult recovered = rateLimiterService.tryConsume(key, limit);
+              assertThat(recovered.allowed()).isTrue();
+              assertThat(recovered.failOpen()).isFalse();
+            });
   }
 }

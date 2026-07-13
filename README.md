@@ -18,6 +18,10 @@ Spring Security OAuth2 Resource Server가 RS256 JWT를 검증합니다. 외부 �
 Bucket4j의 토큰 버킷을 Redis에 저장합니다. 인증한 요청은 사용자별로, 익명 요청은
 IP별로 한도를 계산하므로 gateway 인스턴스가 여러 대여도 같은 제한을 공유합니다.
 Redis를 사용할 수 없을 때는 gateway 전체가 중단되지 않도록 요청을 허용합니다.
+연결 시도는 300ms, Redis 명령은 500ms로 제한하고 재연결 중 명령을 즉시 거절하므로
+fail-open 경로가 Redis의 장시간 응답 대기에 묶이지 않습니다. 자동 재연결은 유지되어
+Redis가 복구되면 분산 호출 제한을 다시 적용합니다. 따라서 장애 시간에는 호출 제한이
+강제되지 않는 가용성 우선(fail-open) 정책입니다.
 
 ### REST 라우팅
 
@@ -58,7 +62,7 @@ MVC를 선택했습니다.
 
 ## 빌드와 검증
 
-`shared-protocol` 0.2.0을 로컬 Maven 저장소에 먼저 설치해야 합니다. 통합 테스트는
+`shared-protocol` 0.3.0을 로컬 Maven 저장소에 먼저 설치해야 합니다. 통합 테스트는
 Redis Testcontainer와 Embedded Kafka를 사용하므로 Docker가 실행 중이어야 합니다.
 
 ```sh
@@ -84,20 +88,23 @@ cd ../sportsbook-gateway
 - 상태 확인: `/actuator/health/liveness`, `/actuator/health/readiness`
 - Prometheus: `/actuator/prometheus`
 
-## 성능 확인
+## 성능 측정 상태
 
-2026년 5월 30일 개발 환경에서 500개 STOMP 구독자가 한 번의 배당 변경을 모두
-수신했고 최대 지연은 약 210ms였습니다. 같은 환경의 REST 라우팅은 약 2.6k RPS,
-p99 약 30~43ms, 오류율 0.2~0.6%를 기록했습니다.
+포트폴리오 hardening 이후 현재 소스로 WebSocket fan-out이나 REST 라우팅 처리량을
+다시 측정하지 않았습니다. 따라서 이 릴리스에는 동시 연결 수, RPS, p99 또는 오류율
+성능 주장이 없습니다.
 
-이 값은 gateway와 WireMock을 한 JVM에서 실행한 기준입니다. 1만 동시 연결 목표와
-분리된 호스트 환경을 대신하지 않습니다. 실행 방법과 상세 수치는
-[부하 테스트 결과](load-test/results/BEST.md)에서 확인할 수 있습니다.
+라우팅·인증·Redis fail-open과 Kafka-to-STOMP 전달의 기능은 테스트로 검증합니다.
+`load-test/results/<날짜>/`의 결과는 hardening 이전 소스와 단일 JVM 개발 환경에서
+만든 역사 자료이며 현재 릴리스의 대표 수치가 아닙니다. 실행 방법과 자료 범위는
+[부하 테스트 문서](load-test/README.md)에서 확인할 수 있습니다.
 
 ## 현재 제한
 
 - JWT 폐기는 블랙리스트 대신 짧은 만료 시간과 refresh token으로 처리합니다.
 - STOMP simple broker는 단일 인스턴스 구성입니다. 여러 인스턴스에서 메시지를
   공유하려면 broker relay나 별도의 분산 전달 계층이 필요합니다.
+- Redis 장애 중에는 rate limit이 fail-open이므로 남용 방지 경계로 사용할 수
+  없습니다. 운영 환경에서는 상위 WAF 또는 API gateway 한도를 함께 사용해야 합니다.
 - gateway는 요청 본문을 다시 작성하지 않습니다. `betting-service`가
   `X-User-Id`와 본문 또는 쿼리의 사용자 일치를 최종 확인합니다.

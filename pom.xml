@@ -53,8 +53,8 @@
 
         <!-- Aligned with shared-protocol/pom.xml so the Avro generated classes
              (OddsChanged / BetSettled / BetVoided) link cleanly here.
-             ADR-0014 / ADR-0006. 0.2.0 carries the settlement result events. -->
-        <shared-protocol.version>0.2.0-SNAPSHOT</shared-protocol.version>
+             ADR-0014 / ADR-0006. Version 0.3.0 is the fixed portfolio contract. -->
+        <shared-protocol.version>0.3.0</shared-protocol.version>
         <avro.version>1.12.0</avro.version>
         <testcontainers.version>1.20.3</testcontainers.version>
         <!-- Pinned because annotationProcessorPaths does not consult the

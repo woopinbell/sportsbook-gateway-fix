@@ -13,7 +13,8 @@ spring:
           public-key-location: ${GATEWAY_JWT_PUBLIC_KEY:classpath:jwt/dev-public.pem}
 
   # Backing store for the distributed rate-limit buckets (Bucket4j). Lettuce
-  # connects lazily; if Redis is down the limiter fails open (RateLimiterService).
+  # connects lazily, rejects commands while disconnected, and bounds commands
+  # to 500 ms; if Redis is unavailable the limiter fails open (RateLimiterService).
   data:
     redis:
       host: ${GATEWAY_REDIS_HOST:localhost}

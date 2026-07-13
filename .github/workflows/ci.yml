@@ -1,0 +1,29 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/sportsbook-shared-protocol
+          ref: sportsbook-v2.0.0
+          path: sportsbook-shared-protocol
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - run: ./mvnw -B -DskipTests install
+        working-directory: sportsbook-shared-protocol
+      - run: ./mvnw -B verify
