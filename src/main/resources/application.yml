@@ -83,7 +83,7 @@ gateway:
     odds-changed: ${GATEWAY_TOPIC_ODDS_CHANGED:odds.changed}
     bet-settled: ${GATEWAY_TOPIC_BET_SETTLED:bet.settled.v1}
     bet-voided: ${GATEWAY_TOPIC_BET_VOIDED:bet.voided.v1}
-  # STOMP WebSocket. Allowed origins should be locked down per environment;
-  # "*" is a dev default (the public clients are browsers on other origins).
+  # STOMP WebSocket. Local development origins are the safe default; deployments
+  # must explicitly list their browser application origins.
   ws:
-    allowed-origins: ${GATEWAY_WS_ALLOWED_ORIGINS:*}
+    allowed-origins: ${GATEWAY_WS_ALLOWED_ORIGINS:http://localhost:[*],http://127.0.0.1:[*]}

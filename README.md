@@ -44,7 +44,9 @@ Kafka에서 배당 변경과 베팅 정산 이벤트를 받아 STOMP 구독자�
 - `/user/queue/bets`: 사용자별 정산 결과
 
 `bet.settled.v1`과 `bet.voided.v1`을 구독하며, 베팅 상태는 해당 사용자의 세션에만
-보냅니다.
+보냅니다. gateway는 서버→클라이언트 fan-out 전용이므로 클라이언트 `SEND` 프레임을
+모두 거절합니다. 구독도 `/topic/odds/{eventId}`와 인증된 `/user/queue/bets`만
+허용하며, 브라우저 origin은 `GATEWAY_WS_ALLOWED_ORIGINS`로 명시해야 합니다.
 
 ## 기술 구성
 

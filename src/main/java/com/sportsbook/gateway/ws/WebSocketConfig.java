@@ -7,6 +7,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 /**
  * STOMP WebSocket broker for live fan-out. Two handshake endpoints: {@code /ws/v1/odds} (public
@@ -18,6 +19,10 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+  private static final int MESSAGE_SIZE_LIMIT_BYTES = 64 * 1024;
+  private static final int SEND_BUFFER_LIMIT_BYTES = 512 * 1024;
+  private static final int SEND_TIME_LIMIT_MILLIS = 10_000;
 
   private final StompAuthChannelInterceptor authInterceptor;
   private final String[] allowedOrigins;
@@ -44,5 +49,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
   @Override
   public void configureClientInboundChannel(ChannelRegistration registration) {
     registration.interceptors(authInterceptor);
+  }
+
+  @Override
+  public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+    registration
+        .setMessageSizeLimit(MESSAGE_SIZE_LIMIT_BYTES)
+        .setSendBufferSizeLimit(SEND_BUFFER_LIMIT_BYTES)
+        .setSendTimeLimit(SEND_TIME_LIMIT_MILLIS);
   }
 }

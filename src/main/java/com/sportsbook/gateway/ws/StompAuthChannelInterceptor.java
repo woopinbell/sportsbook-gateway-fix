@@ -23,7 +23,9 @@ import org.springframework.stereotype.Component;
  * <jwt>} header is verified with the same RSA key as the REST side; the user principal is named by
  * the JWT subject so {@code convertAndSendToUser(userId, ...)} reaches exactly that session.
  * CONNECT without a token is allowed but anonymous — it may only use the public odds stream.
- * SUBSCRIBE to a per-user destination ({@code /user/**}) requires an authenticated session.
+ * SUBSCRIBE is allowlisted to the public odds stream and the authenticated user's bet queue. Client
+ * SEND frames are always rejected: this gateway is a server-to-client Kafka fan-out and has no
+ * client-originated messaging commands.
  */
 @Component
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
@@ -44,7 +46,9 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     if (StompCommand.CONNECT.equals(accessor.getCommand())) {
       authenticate(accessor);
     } else if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-      requireUserForUserDestination(accessor);
+      authorizeSubscription(accessor);
+    } else if (StompCommand.SEND.equals(accessor.getCommand())) {
+      throw new MessageDeliveryException("Client SEND frames are not supported");
     }
     return message;
   }
@@ -62,11 +66,17 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     }
   }
 
-  private static void requireUserForUserDestination(StompHeaderAccessor accessor) {
+  private static void authorizeSubscription(StompHeaderAccessor accessor) {
     String destination = accessor.getDestination();
-    if (destination != null && destination.startsWith("/user/") && accessor.getUser() == null) {
-      throw new MessageDeliveryException("Authentication required for " + destination);
+    if (destination != null
+        && destination.startsWith("/topic/odds/")
+        && destination.length() > "/topic/odds/".length()) {
+      return;
     }
+    if ("/user/queue/bets".equals(destination) && accessor.getUser() != null) {
+      return;
+    }
+    throw new MessageDeliveryException("Subscription is not allowed for " + destination);
   }
 
   private static Collection<GrantedAuthority> authorities(Jwt jwt) {

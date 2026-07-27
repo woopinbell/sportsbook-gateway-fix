@@ -21,9 +21,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Enforces the per-user / per-IP rate limit (ADR-0004 RFC 7807 on rejection). Runs just after the
  * Spring Security chain so the authenticated principal is available for per-user keying; requests
- * security already rejected (401) never reach it. Health probes, the STOMP handshake, and the error
- * dispatch are exempt. On rejection it returns 429 with an {@code application/problem+json} body
- * and a {@code Retry-After} header.
+ * security already rejected (401) never reach it. Health probes and the error dispatch are exempt;
+ * STOMP handshakes consume the anonymous per-IP bucket. On rejection it returns 429 with an {@code
+ * application/problem+json} body and a {@code Retry-After} header.
  */
 @Component
 @Order(RateLimitFilter.ORDER)
@@ -57,7 +57,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
       return true;
     }
     String path = request.getRequestURI();
-    return path.startsWith("/actuator") || path.startsWith("/ws") || path.startsWith("/error");
+    return path.startsWith("/actuator") || path.startsWith("/error");
   }
 
   @Override
