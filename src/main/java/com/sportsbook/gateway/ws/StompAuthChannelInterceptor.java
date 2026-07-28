@@ -19,13 +19,9 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 
 /**
- * Authenticates STOMP sessions on the CONNECT frame (ADR-0011). A {@code Authorization: Bearer
- * <jwt>} header is verified with the same RSA key as the REST side; the user principal is named by
- * the JWT subject so {@code convertAndSendToUser(userId, ...)} reaches exactly that session.
- * CONNECT without a token is allowed but anonymous — it may only use the public odds stream.
- * SUBSCRIBE is allowlisted to the public odds stream and the authenticated user's bet queue. Client
- * SEND frames are always rejected: this gateway is a server-to-client Kafka fan-out and has no
- * client-originated messaging commands.
+ * CONNECT 프레임에서 STOMP 세션을 인증합니다(ADR-0011). {@code Authorization: Bearer <jwt>} 헤더는 REST와 같은 RSA 키로
+ * 검증하며 JWT subject를 사용자 식별자로 사용합니다. 토큰 없이 연결한 익명 세션은 공개 배당만 구독할 수 있습니다. SUBSCRIBE는 공개 배당과 인증한 사용자의
+ * 베팅 큐만 허용하고, 클라이언트의 SEND 프레임은 모두 거절합니다.
  */
 @Component
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
@@ -56,7 +52,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
   private void authenticate(StompHeaderAccessor accessor) {
     String header = accessor.getFirstNativeHeader(HttpHeaders.AUTHORIZATION);
     if (header == null || !header.startsWith("Bearer ")) {
-      return; // anonymous session — only the public odds stream is usable
+      return; // 익명 세션은 공개 배당만 구독할 수 있습니다.
     }
     try {
       Jwt jwt = jwtDecoder.decode(header.substring("Bearer ".length()));

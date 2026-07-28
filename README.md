@@ -1,4 +1,4 @@
-# gateway
+# 게이트웨이
 
 `gateway`는 스포츠북 시스템의 외부 요청을 받는 단일 진입점입니다. REST와
 WebSocket 요청의 인증, 호출 제한, 라우팅, 실시간 메시지 전달을 맡고 도메인 처리는
@@ -16,12 +16,12 @@ Spring Security OAuth2 Resource Server가 RS256 JWT를 검증합니다. 외부 �
 ### 호출 제한
 
 Bucket4j의 토큰 버킷을 Redis에 저장합니다. 인증한 요청은 사용자별로, 익명 요청은
-IP별로 한도를 계산하므로 gateway 인스턴스가 여러 대여도 같은 제한을 공유합니다.
-Redis를 사용할 수 없을 때는 gateway 전체가 중단되지 않도록 요청을 허용합니다.
+IP별로 한도를 계산하므로 게이트웨이 인스턴스가 여러 대여도 같은 제한을 공유합니다.
+Redis를 사용할 수 없을 때는 게이트웨이 전체가 중단되지 않도록 요청을 허용합니다.
 연결 시도는 300ms, Redis 명령은 500ms로 제한하고 재연결 중 명령을 즉시 거절하므로
-fail-open 경로가 Redis의 장시간 응답 대기에 묶이지 않습니다. 자동 재연결은 유지되어
+장애 시 허용 경로가 Redis의 장시간 응답 대기에 묶이지 않습니다. 자동 재연결은 유지되어
 Redis가 복구되면 분산 호출 제한을 다시 적용합니다. 따라서 장애 시간에는 호출 제한이
-강제되지 않는 가용성 우선(fail-open) 정책입니다.
+강제되지 않는 가용성 우선(장애 시 허용) 정책입니다.
 
 ### REST 라우팅
 
@@ -44,9 +44,9 @@ Kafka에서 배당 변경과 베팅 정산 이벤트를 받아 STOMP 구독자�
 - `/user/queue/bets`: 사용자별 정산 결과
 
 `bet.settled.v1`과 `bet.voided.v1`을 구독하며, 베팅 상태는 해당 사용자의 세션에만
-보냅니다. gateway는 서버→클라이언트 fan-out 전용이므로 클라이언트 `SEND` 프레임을
+보냅니다. 게이트웨이는 서버→클라이언트 분배 전용이므로 클라이언트 `SEND` 프레임을
 모두 거절합니다. 구독도 `/topic/odds/{eventId}`와 인증된 `/user/queue/bets`만
-허용하며, 브라우저 origin은 `GATEWAY_WS_ALLOWED_ORIGINS`로 명시해야 합니다.
+허용하며, 브라우저 출처는 `GATEWAY_WS_ALLOWED_ORIGINS`로 명시해야 합니다.
 
 ## 기술 구성
 
@@ -59,7 +59,7 @@ Kafka에서 배당 변경과 베팅 정산 이벤트를 받아 STOMP 구독자�
 - Micrometer, OpenTelemetry, Prometheus
 
 Spring의 내장 STOMP 브로커는 서블릿 스택을 사용합니다. 같은 애플리케이션에서
-라우팅과 STOMP를 함께 운영하기 위해 WebFlux 기반 gateway 대신 Gateway Server
+라우팅과 STOMP를 함께 운영하기 위해 WebFlux 기반 게이트웨이 대신 Gateway Server
 MVC를 선택했습니다.
 
 ## 빌드와 검증
@@ -92,21 +92,21 @@ cd ../sportsbook-gateway
 
 ## 성능 측정 상태
 
-포트폴리오 hardening 이후 현재 소스로 WebSocket fan-out이나 REST 라우팅 처리량을
-다시 측정하지 않았습니다. 따라서 이 릴리스에는 동시 연결 수, RPS, p99 또는 오류율
-성능 주장이 없습니다.
+안정화 작업을 마친 뒤에는 현재 소스로 WebSocket 메시지 분배나 REST 라우팅 처리량을
+다시 측정하지 않았습니다. 따라서 현재 코드에는 동시 연결 수, RPS, p99 또는 오류율
+성능 수치를 제시하지 않습니다.
 
-라우팅·인증·Redis fail-open과 Kafka-to-STOMP 전달의 기능은 테스트로 검증합니다.
-`load-test/results/<날짜>/`의 결과는 hardening 이전 소스와 단일 JVM 개발 환경에서
-만든 역사 자료이며 현재 릴리스의 대표 수치가 아닙니다. 실행 방법과 자료 범위는
+라우팅·인증·Redis 장애 시 허용과 Kafka-to-STOMP 전달의 기능은 테스트로 검증합니다.
+`load-test/results/<날짜>/`의 결과는 안정화 전 소스와 단일 JVM 개발 환경에서
+만든 과거 측정 자료이며 현재 코드의 대표 수치가 아닙니다. 실행 방법과 자료 범위는
 [부하 테스트 문서](load-test/README.md)에서 확인할 수 있습니다.
 
 ## 현재 제한
 
-- JWT 폐기는 블랙리스트 대신 짧은 만료 시간과 refresh token으로 처리합니다.
-- STOMP simple broker는 단일 인스턴스 구성입니다. 여러 인스턴스에서 메시지를
-  공유하려면 broker relay나 별도의 분산 전달 계층이 필요합니다.
-- Redis 장애 중에는 rate limit이 fail-open이므로 남용 방지 경계로 사용할 수
-  없습니다. 운영 환경에서는 상위 WAF 또는 API gateway 한도를 함께 사용해야 합니다.
-- gateway는 요청 본문을 다시 작성하지 않습니다. `betting-service`가
+- JWT 폐기는 블랙리스트 대신 짧은 만료 시간과 갱신 토큰으로 처리합니다.
+- STOMP 단순 브로커는 단일 인스턴스 구성입니다. 여러 인스턴스에서 메시지를
+  공유하려면 브로커 릴레이나 별도의 분산 전달 계층이 필요합니다.
+- Redis 장애 중에는 요청을 허용하므로 호출 제한만으로 남용을 막을 수
+  없습니다. 운영 환경에서는 상위 WAF 또는 API 게이트웨이 한도를 함께 사용해야 합니다.
+- 게이트웨이는 요청 본문을 다시 작성하지 않습니다. `betting-service`가
   `X-User-Id`와 본문 또는 쿼리의 사용자 일치를 최종 확인합니다.

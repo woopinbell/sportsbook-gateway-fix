@@ -1,13 +1,13 @@
 # 2026년 5월 30일 Gateway 측정 결과
 
-macOS 개발 환경에서 JDK 21과 Spring Boot 3.2.11을 사용했습니다. rate limit은
+macOS 개발 환경에서 JDK 21과 Spring Boot 3.2.11을 사용했습니다. 호출 제한은
 비활성화했고, STOMP 시험은 Embedded Kafka를, 라우팅 시험은 WireMock을 사용했습니다.
 
 ```sh
 ./mvnw test -Dsurefire.excludedGroups= -Dtest=GatewayLoadTest
 ```
 
-## WebSocket fan-out
+## WebSocket 분배
 
 | 항목 | 측정값 |
 |---|---:|

@@ -10,11 +10,9 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 /**
- * STOMP WebSocket broker for live fan-out. Two handshake endpoints: {@code /ws/v1/odds} (public
- * odds stream) and {@code /ws/v1/bets} (authenticated bet-status). An in-memory simple broker
- * serves {@code /topic} (odds broadcast) and {@code /queue} (per-user, via the {@code /user}
- * destination prefix). CONNECT-frame authentication is enforced by {@link
- * StompAuthChannelInterceptor} on the inbound channel.
+ * 실시간 메시지를 전달하는 STOMP WebSocket 설정입니다. {@code /ws/v1/odds}는 공개 배당, {@code /ws/v1/bets}는 인증한 사용자의 베팅
+ * 상태를 전달합니다. 메모리 기반 단순 브로커는 배당 방송용 {@code /topic}과 사용자별 {@code /queue}를 처리합니다. CONNECT 프레임 인증은 입력
+ * 채널의 {@link StompAuthChannelInterceptor}가 담당합니다.
  */
 @Configuration
 @EnableWebSocketMessageBroker
