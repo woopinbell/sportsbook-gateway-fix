@@ -23,16 +23,24 @@ Redis를 사용할 수 없을 때는 게이트웨이 전체가 중단되지 않�
 Redis가 복구되면 분산 호출 제한을 다시 적용합니다. 따라서 장애 시간에는 호출 제한이
 강제되지 않는 가용성 우선(장애 시 허용) 정책입니다.
 
+익명 요청의 IP는 `X-Forwarded-For` 첫 번째 값에서 읽습니다. 외부 클라이언트가
+게이트웨이에 직접 연결할 수 없고 신뢰할 수 있는 ingress가 이 헤더를 덮어쓰는
+환경에서만 올바른 사용자별 IP 제한이 됩니다.
+
 ### REST 라우팅
 
-공개 `/api/v1/*` 요청을 내부 서비스의 계약에 맞게 전달합니다.
+등록된 공개 REST 경로만 내부 서비스로 전달합니다.
 
-- 베팅 접수와 조회: `betting-service`
-- 잔액 조회: `wallet-service`
-- 이벤트와 배당 조회: `odds-feed-service`
+- `/api/v1/bets`, `/api/v1/bets/**`: `betting-service`
+- `GET /api/v1/wallet/balance`: `wallet-service`
+- `/api/v1/events`, `/api/v1/events/**`, `/api/v1/odds/**`:
+  `odds-feed-service`
 
-경로를 `/internal/v1/*`로 바꾸고 검증된 사용자 정보와 W3C `traceparent`를
-전달합니다. 하위 서비스의 RFC 7807 오류 응답은 본문을 바꾸지 않고 반환합니다.
+베팅 경로는 `/internal/v1/bets` 아래로, 잔액 조회는 인증한 사용자의
+`/internal/v1/wallet/accounts/{userId}/balance`로 바꿉니다. 경기와 배당 조회는
+공개 경로를 그대로 사용합니다. 인증이 필요한 경로에는 검증된 사용자 정보를,
+모든 REST 경로에는 W3C `traceparent`를 전달합니다. 하위 서비스의 RFC 7807 오류
+응답은 본문을 바꾸지 않고 반환합니다.
 
 ### 실시간 메시지
 
@@ -85,28 +93,36 @@ cd ../sportsbook-gateway
 
 ## 공개 인터페이스
 
-- HTTP: `/api/v1/*`
+- 베팅: `/api/v1/bets`, `/api/v1/bets/**`
+- 지갑 잔액: `/api/v1/wallet/balance`
+- 공개 경기·배당 조회: `/api/v1/events`, `/api/v1/events/**`, `/api/v1/odds/**`
 - WebSocket: `/ws/v1/odds`, `/ws/v1/bets`
 - 상태 확인: `/actuator/health/liveness`, `/actuator/health/readiness`
 - Prometheus: `/actuator/prometheus`
 
 ## 성능 측정 상태
 
-안정화 작업을 마친 뒤에는 현재 소스로 WebSocket 메시지 분배나 REST 라우팅 처리량을
-다시 측정하지 않았습니다. 따라서 현재 코드에는 동시 연결 수, RPS, p99 또는 오류율
-성능 수치를 제시하지 않습니다.
+현재 소스로 WebSocket 메시지 분배나 REST 라우팅 처리량을 재현한 측정 결과가
+없습니다. 따라서 동시 연결 수, RPS, p99 또는 오류율을 현재 성능 수치로 제시하지
+않습니다.
 
 라우팅·인증·Redis 장애 시 허용과 Kafka-to-STOMP 전달의 기능은 테스트로 검증합니다.
-`load-test/results/<날짜>/`의 결과는 안정화 전 소스와 단일 JVM 개발 환경에서
-만든 과거 측정 자료이며 현재 코드의 대표 수치가 아닙니다. 실행 방법과 자료 범위는
+`load-test/results/<날짜>/`의 결과는 단일 JVM 개발 환경에서 만든 참고 자료이며
+현재 코드의 대표 수치가 아닙니다. 실행 방법과 자료 범위는
 [부하 테스트 문서](load-test/README.md)에서 확인할 수 있습니다.
 
 ## 현재 제한
 
-- JWT 폐기는 블랙리스트 대신 짧은 만료 시간과 갱신 토큰으로 처리합니다.
+- 이 저장소에는 JWT 발급, 갱신, 폐기 목록이 없습니다. 공개키와 시간 조건을 통과한
+  토큰은 만료될 때까지 유효하므로 발급·폐기 정책은 외부 IAM에서 관리해야 합니다.
 - STOMP 단순 브로커는 단일 인스턴스 구성입니다. 여러 인스턴스에서 메시지를
   공유하려면 브로커 릴레이나 별도의 분산 전달 계층이 필요합니다.
 - Redis 장애 중에는 요청을 허용하므로 호출 제한만으로 남용을 막을 수
   없습니다. 운영 환경에서는 상위 WAF 또는 API 게이트웨이 한도를 함께 사용해야 합니다.
 - 게이트웨이는 요청 본문을 다시 작성하지 않습니다. `betting-service`가
   `X-User-Id`와 본문 또는 쿼리의 사용자 일치를 최종 확인합니다.
+- Kafka payload를 Avro로 해석하지 못하면 listener가 실패하며 이 저장소에는 별도의
+  dead-letter topic 설정이 없습니다.
+
+구현 과정과 장애 대응은 [`devlog/`](devlog/README.md), 현재 HTTP·실시간 전달 구조는
+[`architecture/`](architecture/http-edge-security-and-routing.md)에 정리되어 있습니다.
