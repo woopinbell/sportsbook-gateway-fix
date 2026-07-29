@@ -1,7 +1,7 @@
 # Kafka와 STOMP 전달
 
-실시간 경로는 Kafka consumer와 WebSocket session 사이의 변환 계층입니다. 공개 배당과
-사용자별 베팅 상태를 같은 broker에서 처리하지만 인증 범위와 destination은 분리합니다.
+실시간 경로는 Kafka 이벤트를 WebSocket 세션에 맞는 메시지로 바꾼다. 공개 배당과
+사용자별 베팅 상태가 같은 단순 브로커를 지나지만 구독 주소와 인증 범위는 분리된다.
 
 ## 전달 흐름
 
@@ -17,50 +17,47 @@ settlement ─ bet.voided.v1 ──┘         │
                                             principal == event.userId
 ```
 
-Kafka 값은 byte array이며 `shared-protocol`이 생성한 SpecificRecord로 해석합니다.
-외부 JSON에는 필요한 필드만 담은 `OddsUpdate`, `BetStatusUpdate`를 사용합니다.
-Avro generated 객체를 그대로 노출하지 않아 schema 세부와 WebSocket 응답을 분리합니다.
+Kafka 값은 바이트 배열이다.
+[`AvroDecoder`](../src/main/java/com/sportsbook/gateway/ws/AvroDecoder.java)가
+`shared-protocol`에서 생성한 레코드로 해석하고,
+[`OddsStreamListener`](../src/main/java/com/sportsbook/gateway/ws/OddsStreamListener.java)와
+[`BetStatusStreamListener`](../src/main/java/com/sportsbook/gateway/ws/BetStatusStreamListener.java)가
+각각 `OddsUpdate`, `BetStatusUpdate` JSON으로 보낸다. Avro 레코드 자체는 외부
+응답에 노출되지 않는다.
 
 ## 연결과 권한
 
-| 단계 | 공개 배당 | 사용자 베팅 상태 |
+| 단계 | 토큰과 사용자 | 허용 범위 |
 |---|---|---|
-| HTTP handshake | 익명 허용 | 익명 연결 자체는 가능 |
-| STOMP CONNECT | 토큰 선택 | bearer token 필요 |
-| SUBSCRIBE | `/topic/odds/{eventId}` | `/user/queue/bets`와 principal 필요 |
-| SEND | 거절 | 거절 |
+| HTTP 핸드셰이크 | 토큰이 없으면 익명, 유효하면 JWT subject를 principal로 설정 | 익명 연결은 허용하지만 잘못된 토큰은 401 |
+| STOMP CONNECT | 프레임에 토큰이 없으면 핸드셰이크 principal 유지, 있으면 그 subject로 교체 | 잘못된 토큰은 연결 거절 |
+| SUBSCRIBE | principal 선택을 바꾸지 않음 | `/topic/odds/` 뒤에 값이 있는 주소, 또는 인증된 `/user/queue/bets` |
+| SEND | principal과 무관 | 모두 거절 |
 
-인증은 CONNECT frame에서 수행하므로 HTTP Authorization header만 넣고 STOMP native
-header를 빠뜨리면 사용자 session이 되지 않습니다.
+HTTP와 CONNECT에 서로 다른 유효한 토큰이 함께 오면 CONNECT 프레임에 넣은 토큰의
+subject가 최종 principal이 된다.
+[`StompAuthChannelInterceptor`](../src/main/java/com/sportsbook/gateway/ws/StompAuthChannelInterceptor.java)는
+배당 구독 주소의 접두사와 비어 있지 않은 뒷부분만 확인한다. UUID 형식이나 경로
+조각 수까지 검사하지는 않는다.
 
-## 단일 인스턴스 제약
+## 실행 단위와 실패 경계
 
-Spring simple broker의 사용자 session 정보는 JVM 안에만 있습니다. Kafka consumer
-group은 한 event를 한 gateway instance에 전달합니다. gateway가 여러 대이면 event를
-받은 instance와 사용자 session을 가진 instance가 다를 수 있습니다.
-
-다중 인스턴스 선택지는 다음과 같습니다.
-
-- STOMP broker relay로 session과 destination을 외부 broker에 위임
-- Kafka event를 모든 gateway instance에 복제하는 fan-out 계층
-- 사용자 session 소유권에 맞춰 event를 라우팅하는 별도 gateway
-
-현재 코드는 첫 번째 확장 전 단계인 단일 인스턴스용입니다.
-
-## 실패와 관측
+단순 브로커의 세션 정보는 JVM 안에만 있다. Kafka 소비자 그룹은 한 레코드를 그룹
+안의 한 게이트웨이에만 전달하므로, 여러 인스턴스를 띄우면 이벤트를 받은 곳과
+사용자 세션이 열린 곳이 다를 수 있다. 현재 전달 구조의 실행 단위는 게이트웨이
+한 대다.
 
 | 실패 | 현재 결과 | 확인할 신호 |
 |---|---|---|
-| Kafka 연결 | 실시간 갱신 중단 | consumer health와 lag |
-| 잘못된 Avro payload | listener 예외 | decode 오류 로그 |
-| 잘못된 토픽 이름 | 메시지 수신 없음 | topic별 consumer offset |
-| 느린 WebSocket client | buffer/time limit 초과 | session 종료와 전송 오류 |
-| 허용되지 않은 frame | `MessageDeliveryException` | STOMP 오류와 보안 로그 |
+| Kafka 연결 | 실시간 갱신 중단 | 소비자 상태와 지연 |
+| 잘못된 Avro 레코드 | 최초 처리와 9회 재시도 뒤 로그만 남기고 다음 레코드로 진행 | Avro 해석 오류 로그 |
+| 잘못된 토픽 이름 | 메시지 수신 없음 | 토픽별 소비자 오프셋 |
+| 느린 WebSocket 클라이언트 | 버퍼·전송 제한 초과 | 세션 종료와 전송 오류 |
+| 허용되지 않은 프레임 | `MessageDeliveryException` | STOMP 오류와 보안 로그 |
 
-dead-letter topic이 없으므로 같은 잘못된 record가 consumer 진행을 계속 막는지 운영
-환경에서 확인해야 합니다. payload 오류를 단순 연결 장애와 같은 경보로 묶으면 원인
-분리가 늦어집니다.
+별도 오류 처리기와 실패 레코드 보관 토픽(DLT)이 없어 기본 복구 뒤 잘못된
+레코드의 실시간 갱신은 유실된다. 소비자는 멈추지 않고 다음 레코드를 처리한다.
 
-구현 상세와 테스트 방법은
-[Kafka에서 STOMP로 전달하는 경계](../devlog/03-kafka-to-stomp-access-control.md)에
-있습니다.
+인증과 기본 Kafka 오류 처리의 세부 내용은
+[Kafka 이벤트를 STOMP 구독자에게 나눠 보내기](../devlog/04-kafka-to-stomp-access-control.md)에
+있다.
